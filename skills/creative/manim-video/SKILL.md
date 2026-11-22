@@ -1,10 +1,21 @@
 ---
 name: manim-video
-description: "Production pipeline for mathematical and technical animations using Manim Community Edition. Creates 3Blue1Brown-style explainer videos, algorithm visualizations, equation derivations, architecture diagrams, and data stories. Use when users request: animated explanations, math animations, concept visualizations, algorithm walkthroughs, technical explainers, 3Blue1Brown style videos, or any programmatic animation with geometric/mathematical content."
+description: "Manim CE animations: 3Blue1Brown math/algo videos."
 version: 1.0.0
+author: SHL0MS, Hermes Agent
+license: MIT
+platforms: [linux, macos, windows]
+metadata:
+  hermes:
+    tags: [Manim, Animation, Math, Video]
+    related_skills: []
 ---
 
 # Manim Video Production Pipeline
+
+## When to use
+
+Use when users request: animated explanations, math animations, concept visualizations, algorithm walkthroughs, technical explainers, 3Blue1Brown style videos, or any programmatic animation with geometric/mathematical content. Creates 3Blue1Brown-style explainer videos, algorithm visualizations, equation derivations, architecture diagrams, and data stories using Manim Community Edition.
 
 ## Creative Standard
 
@@ -172,11 +183,14 @@ manim -qh script.py Scene1_Introduction Scene2_CoreConcept  # production
 
 ### Step 4: Stitch
 
-```bash
-cat > concat.txt << 'EOF'
+`write_file` `concat.txt`:
+
+```
 file 'media/videos/script/480p15/Scene1_Introduction.mp4'
 file 'media/videos/script/480p15/Scene2_CoreConcept.mp4'
-EOF
+```
+
+```bash
 ffmpeg -y -f concat -safe 0 -i concat.txt -c copy final.mp4
 ```
 
