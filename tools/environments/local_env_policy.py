@@ -48,6 +48,8 @@ _STATIC_PROVIDER_ENV_BLOCKLIST = DEPLOYMENT_STAMP_ENV | frozenset({
     # The dashboard PTY child's WS URLs carry that token (or the gated internal
     # credential) in their query string; the TUI reads them at start-up, no child does.
     "HERMES_TUI_SIDECAR_URL", "HERMES_TUI_GATEWAY_URL",
+    # OSC 7577 Program Resume token authenticates terminal resume records for the pane.
+    "OSC7577_TOKEN",
     "GATEWAY_ALLOWED_USERS", "GH_TOKEN", "GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY_PATH",
     "GITHUB_APP_INSTALLATION_ID", "MODAL_TOKEN_ID", "MODAL_TOKEN_SECRET",
     "DAYTONA_API_KEY", "GATEWAY_RELAY_ID", "GATEWAY_RELAY_SECRET",
@@ -62,6 +64,9 @@ _STATIC_PROVIDER_ENV_BLOCKLIST = DEPLOYMENT_STAMP_ENV | frozenset({
     "HERMES_ANON_API_SECRET", "HERMES_DASHBOARD_BASIC_AUTH_PASSWORD",
     "HERMES_DASHBOARD_BASIC_AUTH_SECRET", "HERMES_DASHBOARD_DRAIN_SECRET",
     "HERMES_DASHBOARD_OIDC_CLIENT_SECRET", "HERMES_MEET_REALTIME_KEY",
+    # Keys of the ByteRover/RetainDB providers (now Hermes Labs plugins): a profile's .env still loads
+    # them, and no OPTIONAL_ENV_VARS row declares them any more.
+    "BRV_API_KEY", "RETAINDB_API_KEY", "RETAINDB_BASE_URL",
 })
 
 
@@ -144,6 +149,9 @@ def _build_adapter_secret_env() -> frozenset:
                  and meta.get("category") == "messaging" and meta.get("password"))
     names |= platform_manifest_secret_envs(source="bundled", strict=True)
     names.update(n.upper() for n in config_env_table_keys() if n.upper().endswith(PLATFORM_SECRET_ENV_SUFFIXES))
+    # A platform that left core: its manifest secrets stay adapter secrets while the plugin is absent.
+    from hermes_cli.left_core_migration import LEFT_CORE
+    names.update(name for feature in LEFT_CORE if feature.platform for name in feature.secret_env)
     return frozenset(names)
 
 
@@ -577,6 +585,8 @@ def _static_gate_env_prefixes() -> frozenset:
     try:
         from gateway.config import Platform
         names.update(m.value for m in Platform.__members__.values())
+        from hermes_cli.left_core_migration import LEFT_CORE  # platforms that left core keep their gates
+        names.update(f.platform for f in LEFT_CORE if f.platform)
         bundled, aliases = Platform._scan_bundled_plugin_platforms()
         names.update(bundled)
         names.update(aliases)
@@ -647,6 +657,8 @@ _ALWAYS_STRIP_KEYS: frozenset[str] = frozenset({
     # enumerated here to stay stripped on the inherit_credentials=True path.
     "GATEWAY_RELAY_ID", "GATEWAY_RELAY_SECRET", "GATEWAY_RELAY_DELIVERY_KEY",
     "EMAIL_PASSWORD", "HERMES_DASHBOARD_SESSION_TOKEN", "HERMES_TUI_SIDECAR_URL", "HERMES_TUI_GATEWAY_URL",
+    # OSC 7577 Program Resume token authenticates pane resume records; children must not inherit it.
+    "OSC7577_TOKEN",
     # Dashboard auth: the basic-auth password and session-signing secret, the OIDC client
     # secret and the drain bearer. They let a holder mint or forge dashboard sessions, and no
     # child (credentialed CLIs included) consumes them.

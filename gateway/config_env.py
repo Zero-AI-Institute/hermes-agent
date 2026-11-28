@@ -211,7 +211,7 @@ def _enable_plugin_platform(config: GatewayConfig, entry) -> None:
         # registered ``ensure_deps_fn`` still gets enabled here — the registry's ``create_adapter()`` runs
         # the active installer at gateway start, when the user actually wants the platform up. Historically
         # the ACTIVE installer was wired as ``check_fn`` and this sweep pip-installed
-        # Discord/Telegram/Slack/Feishu/Dingtalk SDKs on every ``load_gateway_config()`` call — including
+        # Discord/Telegram/Slack/Feishu/DingTalk SDKs on every ``load_gateway_config()`` call — including
         # the desktop/dashboard readiness probe (``GET /api/status``) — blocking startup until every install
         # finished and boot-looping the desktop app at 94%. The check_fn/ensure_deps_fn split (#79812) makes
         # that impossible by construction.
@@ -256,12 +256,12 @@ def _bundled_env_fallbacks(config: GatewayConfig, entries: list, *, only: Option
     ``gateway.platform_env.bundled_env_rows``. They only run the env steps, never the enable pass."""
     from types import SimpleNamespace
     from gateway.platform_activation import activation_predicate
-    from gateway.platform_env import _BUNDLED_ENV_SIBLINGS, bundled_env_rows
+    from gateway.platform_env import bundled_env_rows
     have = {getattr(e, "name", "") for e in entries}
     if only is not None:  # bundled_env_rows() answers for one name without scanning every manifest
         names = {only.value} - have
     else:
-        names = (set(Platform._scan_bundled_plugin_platforms()[0]) | set(_BUNDLED_ENV_SIBLINGS)) - have
+        names = set(Platform._scan_bundled_plugin_platforms()[0]) - have
     if not names:
         return []
     wanted = activation_predicate(yaml_cfg={}, platform_names=config.platforms)
@@ -404,20 +404,28 @@ def builtin_platform_status(platform_id: str, yaml_cfg: dict) -> Optional[tuple[
         return None
     from gateway.config_loader import (
         _apply_managed_extra, bridge_platform_shared_keys, merge_platform_sections, snapshot_authored_extra,
+        with_yaml_fallback,
     )
     from hermes_cli.managed_scope import apply_managed_overlay
+    from hermes_constants import get_hermes_home
 
     platform = Platform(platform_id)
     names = {platform_id, Platform.RELAY.value}
-    top, nested = _platform_layers(yaml_cfg, names)
-    platforms = merge_platform_sections(top, nested, gw_data={})
-    authored = snapshot_authored_extra(platforms)  # no gateway.json layer here: the merge is config.yaml only
-    managed_top, managed_nested = _platform_layers(apply_managed_overlay({}), names)
-    _apply_managed_extra(authored, {**managed_top, "gateway": managed_nested}, platforms)
-    bridge_platform_shared_keys(top, nested["platforms"], {}, platforms, [platform, Platform.RELAY], authored=authored)
-    for block in platforms.values():
-        block.pop("home_channel", None)  # status needs none; HomeChannel.from_dict can raise or name another platform
-    config = GatewayConfig.from_dict({"platforms": platforms})
+
+    def yaml_platforms() -> GatewayConfig:
+        top, nested = _platform_layers(yaml_cfg, names)
+        platforms = merge_platform_sections(top, nested, gw_data={})
+        authored = snapshot_authored_extra(platforms)  # no gateway.json layer here: the merge is config.yaml only
+        managed_top, managed_nested = _platform_layers(apply_managed_overlay({}), names)
+        _apply_managed_extra(authored, {**managed_top, "gateway": managed_nested}, platforms)
+        bridge_platform_shared_keys(top, nested["platforms"], {}, platforms, [platform, Platform.RELAY], authored=authored)
+        for block in platforms.values():
+            block.pop("home_channel", None)  # status needs none; HomeChannel.from_dict can raise or name another platform
+        return GatewayConfig.from_dict({"platforms": platforms})
+
+    # A block that makes the gateway's own load drop config.yaml (user or managed layer) leaves this
+    # verdict to env alone, as there; the fallback must not re-read the managed layer that may have raised.
+    config = with_yaml_fallback(get_hermes_home(), yaml_platforms, lambda: GatewayConfig.from_dict({}))
     token = _STATUS_READ.set(True)
     try:
         _apply_env_overrides(config, only=platform)

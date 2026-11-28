@@ -153,19 +153,6 @@ def _installed_dir(home: Path, entry) -> Optional[Path]:
     return plugins / entry.name if (plugins / entry.name).is_dir() else None
 
 
-def _entry_spellings(entry, target: Optional[Path]) -> tuple[str, ...]:
-    """Every config-list spelling that may name *entry* (catalog key, installed dir name, manifest name)."""
-    names = {entry.name}
-    if target is not None:
-        names.add(target.name)
-        try:
-            from hermes_yaml import safe_load
-            names.add(str((safe_load((target / "plugin.yaml").read_text(encoding="utf-8-sig")) or {}).get("name") or ""))
-        except (OSError, ValueError, AttributeError):  # no or malformed manifest: the dir names count
-            pass
-    return tuple(sorted(names - {""}))
-
-
 def _settled(home: Path, entry) -> bool:
     """*home* already has *entry*: a plugin the user explicitly disabled, a tree the user put there
     (enabled or not, it is theirs), or one an earlier automatic attempt left that someone has since
@@ -173,8 +160,12 @@ def _settled(home: Path, entry) -> bool:
     marker so a crashed automatic attempt never deletes or re-enables a plugin the user disabled."""
     from hermes_cli.left_core_migration import _plugins_listed
     from hermes_cli.memory_provider_migration import _failure_stamp
+    from hermes_cli.plugin_identity import plugin_identity, tree_identity
     target = _installed_dir(home, entry)
-    enabled, disabled = _plugins_listed(home, _entry_spellings(entry, target))
+    # Judged by the names the loader gives the tree (its core-era keys too), else the catalog name's.
+    identity = plugin_identity(entry.name) if target is None else tree_identity(home / "plugins", target,
+                                                                                 default=entry.name)
+    enabled, disabled = _plugins_listed(home, identity)
     if disabled:
         return True
     if _installing(home, entry).exists():
@@ -258,7 +249,7 @@ def install_defaults(home: Path, *, say: Callable[[str], None] = logger.info,
     installed, ``owed`` what is still to fetch (a failed install), ``raced`` the owed ones whose enable only
     lost to other writers of the plugin selection (only when there are any). One plugin's failure never raises."""
     from hermes_cli.left_core_migration import _first_cause, _install_into
-    from hermes_cli.memory_provider_migration import _home_label, _note_failure, _note_success
+    from hermes_cli.memory_provider_migration import _home_label, _note_failure, _note_success, kept_off_sentence
     result: dict = {"installed": [], "owed": []}
     policy = fetch_policy(home)
     if policy == "unreadable":
@@ -299,7 +290,9 @@ def install_defaults(home: Path, *, say: Callable[[str], None] = logger.info,
             _installing(home, entry).unlink(missing_ok=True)
             have.add(entry.name)
             result["installed"].append(entry.name)
-            say(f"  ✓ Installed default plugin '{entry.name}' for {_home_label(home)}")
+            say(f"  ⚠ Installed default plugin '{entry.name}' for {_home_label(home)}, but "
+                f"{kept_off_sentence(entry.name, home)}" if outcome.get("kept_disabled") else
+                f"  ✓ Installed default plugin '{entry.name}' for {_home_label(home)}")
             continue
         result["owed"].append(entry.name)
         if outcome.get("raced"):

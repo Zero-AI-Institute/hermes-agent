@@ -77,7 +77,7 @@ import {
 import { createBackendConnectionState } from './backend-connection-state'
 import { assertDescriptorStillOwned, forgetFailedDescriptor } from './backend-descriptor-cache'
 import { BackendDialClaims } from './backend-dial-claim'
-import { buildDesktopBackendEnv, profileBackendParentEnv } from './backend-env'
+import { buildDesktopBackendEnv, POSIX_SANE_PATH_ENTRIES, profileBackendParentEnv } from './backend-env'
 import { isReauthRequiredError, waitForHermesReady } from './backend-health'
 import {
   backendCommandMatches,
@@ -365,6 +365,7 @@ import { localSkinProfileKey, registerLocalSkinIpc } from './local-skin'
 import { ACTIVE_LOG_POLL_MS, planLogRotation, reclaimActiveLogIfOversized } from './log-rotation'
 import { guardMacApplicationsLaunch, type MacApplicationsGuardResult } from './mac-applications-guard'
 import { resolveMacAppBundle } from './mac-bundle-location'
+import { resolvePosixGitBinary, runOptionalGit } from './mac-clt-git'
 import { registerMachineProfile } from './machine-profile'
 import { resolveMainHermesHome } from './main-hermes-home'
 import { createMainProcessLagWatchdog } from './main-process-lag-watchdog'
@@ -663,9 +664,9 @@ import { ChannelStrategy } from './updater/channel-strategy'
 import { verifyPreparedChannelInstaller } from './updater/channel-windows-host'
 import { type CheckoutStrategy, createCheckoutStrategy } from './updater/checkout'
 import { readSourceUpdate, sourceChannelName, type SourceUpdate } from './updater/checkout-source'
+import { createElectronUpdaterStrategy, type ElectronUpdaterClientDeps } from './updater/electron-updater-client'
 import { ExternalStrategy } from './updater/external'
 import { readUpdatesFeedBaseFromConfig, resolveFeedBaseUrl } from './updater/feed-config'
-import { createChannelMacStrategy, createMacStrategy } from './updater/mac-client'
 import { UpdateOperation } from './updater/operation'
 import {
   type ConsumedRelaunch,
@@ -3204,23 +3205,21 @@ function findPathCandidates(command) {
   return candidates
 }
 
-function resolveGitBinary() {
+function resolveGitBinary(): string | null {
   if (_gitBinaryCache) {
     return _gitBinaryCache
   }
 
   if (!IS_WINDOWS) {
-    // Every PATH hit, probed — the first entry that merely exists can be
-    // unlaunchable while a working system git sits later on the same PATH.
-    const selected = selectRunnableBinary({
-      candidates: findPathCandidates('git'),
-      fileExists,
-      binaryRuns
-    })
+    const candidates = findPathCandidates('git')
+    const fallbackDirs = POSIX_SANE_PATH_ENTRIES
+    const selected = resolvePosixGitBinary({ candidates, fallbackDirs, fileExists, binaryRuns })
 
-    _gitBinaryCache = selected || 'git'
+    if (selected) {
+      _gitBinaryCache = selected
+    }
 
-    return _gitBinaryCache
+    return selected
   }
 
   const localAppData = process.env.LOCALAPPDATA || ''
@@ -3492,7 +3491,7 @@ function createNativePackagedStrategy(
   target?: ChannelTarget
 ): UpdaterStrategy {
   if (mechanism === 'electron-updater') {
-    const deps: Parameters<typeof createMacStrategy>[0] = {
+    const deps: ElectronUpdaterClientDeps = {
       channel: resolveUpdaterChannelFromStamp(),
       light: isLightVariant(),
       feedBaseUrl: resolveDesktopFeedBaseUrl(),
@@ -3503,7 +3502,7 @@ function createNativePackagedStrategy(
       onInstallFailure: restoreBundledBackend
     }
 
-    return target ? createChannelMacStrategy(deps, target) : createMacStrategy(deps)
+    return createElectronUpdaterStrategy(deps, target)
   }
 
   if (mechanism === 'app-installer') {
@@ -16688,7 +16687,7 @@ function resolveHermesVersion(scope: { connectionId?: string; profile?: string }
 // report in-sync rather than risk a false "your install is torn" warning.
 const checkRendererSkew = createBundleSkewChecker(
   INSTALL_STAMP,
-  (args, options) => execGit(resolveGitBinary(), args, options),
+  (args, options) => runOptionalGit(resolveGitBinary(), args, options, execGit),
   // Only a LIVE marker defers the warning: Desktop never deletes a dead one,
   // so a leftover file would otherwise suppress it indefinitely.
   { isUpdating: async () => updateInFlight || isQuittingForHandoff || Boolean(await readLiveUpdateMarker(HERMES_HOME)) }

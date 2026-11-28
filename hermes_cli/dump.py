@@ -10,7 +10,7 @@ from pathlib import Path
 from hermes_cli.config import get_hermes_home, get_env_path, get_project_root, load_config
 from hermes_cli.env_loader import load_hermes_dotenv
 from hermes_constants import display_hermes_home
-from hermes_platform.resolver.git import resolve_usable_git
+from hermes_platform.resolver.git import inspect_git
 from agent.skill_utils import is_excluded_skill_path
 from datetime import UTC
 
@@ -44,7 +44,7 @@ def _dotenv_key_names() -> set[str]:
 
 def _git_output(project_root: Path, *args: str) -> str:
     """Stripped stdout of ``git <args>`` run in *project_root*, or '' on any failure."""
-    if resolve_usable_git() is None:
+    if not inspect_git(cwd=project_root).usable:
         return ""
     try:
         result = subprocess.run(["git", *args], capture_output=True, text=True, encoding='utf-8', errors='replace',
@@ -142,8 +142,8 @@ _PLATFORM_ENV_VARS = {
     "telegram": "TELEGRAM_BOT_TOKEN", "discord": "DISCORD_BOT_TOKEN", "slack": "SLACK_BOT_TOKEN",
     "whatsapp": "WHATSAPP_ENABLED", "signal": "SIGNAL_HTTP_URL", "email": "EMAIL_ADDRESS",
     "sms": "TWILIO_ACCOUNT_SID", "matrix": "MATRIX_HOMESERVER_URL", "mattermost": "MATTERMOST_URL",
-    "dingtalk": "DINGTALK_CLIENT_ID", "feishu": "FEISHU_APP_ID",
-    "wecom": "WECOM_BOT_ID", "wecom_callback": "WECOM_CALLBACK_CORP_ID", "weixin": "WEIXIN_ACCOUNT_ID",
+    "feishu": "FEISHU_APP_ID",
+    "weixin": "WEIXIN_ACCOUNT_ID",
     "qqbot": "QQ_APP_ID",
 }
 

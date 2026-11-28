@@ -393,7 +393,7 @@ class PluginContext(PluginCapabilityCtxMixin, PluginIdleTaskCtxMixin):
             return True
         try:
             from hermes_cli.config import load_config
-            with _facade()._plugin_home_scope(self._manager.home_path):
+            with _facade()._plugin_home_scope(self._manager.owner_home):
                 cfg = load_config() or {}
         except Exception:
             return False  # fail closed: better to break the override than silently grant it
@@ -480,7 +480,7 @@ class PluginContext(PluginCapabilityCtxMixin, PluginIdleTaskCtxMixin):
         """Return whether this plugin may trigger gateway session turns (read from the plugin's
         own profile config, never the calling thread's ambient home)."""
         try:
-            with _facade()._plugin_home_scope(self._manager.home_path):
+            with _facade()._plugin_home_scope(self._manager.owner_home):
                 cfg = _facade().load_config_readonly() or {}
         except Exception:
             return False
@@ -685,11 +685,10 @@ class PluginContext(PluginCapabilityCtxMixin, PluginIdleTaskCtxMixin):
     def register_platform_handler(self, platform: str, factory: Callable) -> None:
         """Register ``factory(native, adapter)``, invoked at ``connect()`` before/as the core handlers
         register (``adapter`` read-only). ``native``: telegram PTB ``Application``, discord
-        ``commands.Bot``, slack ``AsyncApp``, matrix client, teams ``App``, dingtalk
-        ``DingTalkStreamClient``, line aiohttp ``web.Application``, others ``None``. Keep SDK imports
-        inside the factory; exceptions are logged and the platform still connects. Scope handlers in
-        first-match dispatch tables so core flows keep working. Raises ``ValueError`` when not callable
-        or platform is empty."""
+        ``commands.Bot``, slack ``AsyncApp``, matrix client, teams ``App``, line aiohttp
+        ``web.Application``, others ``None``. Keep SDK imports inside the factory; exceptions are
+        logged and the platform still connects. Scope handlers in first-match dispatch tables so core
+        flows keep working. Raises ``ValueError`` when not callable or platform is empty."""
         if not callable(factory):
             raise self._refuse("a platform handler factory with a non-callable factory")
         key = (platform or "").strip().lower()
